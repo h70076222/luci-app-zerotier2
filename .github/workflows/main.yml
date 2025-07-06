@@ -45,7 +45,7 @@ jobs:
         env:
           ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
           FEEDNAME: packages_ci
-          PACKAGES: luci-app-zerotier2
+          PACKAGES: luci-app-zerotier
           NO_REFRESH_CHECK: true
           V: s
 
