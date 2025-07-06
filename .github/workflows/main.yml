@@ -1,0 +1,88 @@
+name: Build-OpenWrt-ZEROTIER
+
+on:
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: '请填写发布Releases的版本号（留空不发布）'
+        required: false
+        default: ''
+      text:
+        description: '请填写发布的说明'
+        required: false
+        default: ''
+env:
+  TAG: "${{ github.event.inputs.tag }}"
+  TZ: Asia/Shanghai
+permissions:
+  contents: write
+jobs:
+  build:
+    name: Build ${{ matrix.arch }}-${{ matrix.sdk }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        arch:
+          - mips_24kc
+          - mips_mips32
+          - mipsel_24kc
+          - mipsel_24kc_24kf
+          - mipsel_74kc
+          - mipsel_mips32
+          - x86_64
+        sdk:
+          - openwrt-22.03
+          - SNAPSHOT
+
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Building packages
+        uses: sbwml/openwrt-gh-action-sdk@main
+        env:
+          ARCH: ${{ matrix.arch }}-${{ matrix.sdk }}
+          FEEDNAME: packages_ci
+          PACKAGES: luci-app-zerotier2
+          NO_REFRESH_CHECK: true
+          V: s
+
+      - name: Upload artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: ZEROTIER-${{ matrix.arch }}-${{ matrix.sdk }}
+          path: bin/packages/${{ matrix.arch }}/packages_ci/
+
+      - name: Create compress files
+        run: |
+          #tar -zcvf zerotier-${{ matrix.sdk }}-${{ matrix.arch }}.tar.gz -C bin/packages/${{ matrix.arch }}/ packages_ci
+          zip -j zerotier-${{ matrix.arch }}-${{ matrix.sdk }}.zip bin/packages/${{ matrix.arch }}/packages_ci/*
+          echo "build_time=$(date '+%Y年%m月%d日%H:%M:%S' | jq -sRr @uri)" >> $GITHUB_ENV
+
+      - name: Release
+        if: ${{ github.event.inputs.tag != '' }}
+        uses: softprops/action-gh-release@v2
+        with:
+            token: ${{ secrets.GITHUB_TOKEN }}
+            body: |
+             > ### ![](https://img.shields.io/badge/%E7%BC%96%E8%AF%91%E6%97%B6%E9%97%B4-${{ env.build_time }}-8267?logo=github&labelColor=%E9%A1%BB)![](https://img.shields.io/github/downloads/${{ github.repository }}/${{ env.TAG }}/total?label=%E4%B8%8B%E8%BD%BD%E6%AC%A1%E6%95%B0&logo=github) 
+
+             - 其中 **`openwrt-22.03`** 里面是ipk安装包 **`SNAPSHOT`** 里面是apk安装包
+             
+             - 需要先去系统自带的软件包里已经安装 _**luci**_ 和 _**luci-base**_ 和 _**luci-compat**_ 和 _**kmod-tun**_ 再安装这个ipk或apk才能显示界面
+
+             - 安装完成后找不到界面入口的，请注销登录关闭当前浏览器窗口重新打开或重启路由器
+             
+             - 如果 状态-系统日志里 出现下图日志内容可以使用以下命令解决
+             ![image](https://github.com/h70076111luci-app-zerotier2/assets/119713693/5094717e-a301-4411-9450-c8b64d4a3ade)
+             `sed -i 's/util/xml/g' /usr/lib/lua/luci/model/cbi/zerotier.lua`
+
+             - **`*.apk` 是OpenWrt新版的APK包** 对于apk包跳过证书命令
+             `apk add --allow-untrusted luci-app-zerotier.apk`
+
+             ${{ github.event.inputs.text }}
+           
+            tag_name: ${{ env.TAG }}
+            files: zerotier-${{ matrix.arch }}-${{ matrix.sdk }}.zip
